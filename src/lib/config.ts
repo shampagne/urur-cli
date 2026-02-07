@@ -4,6 +4,9 @@ import path from 'node:path'
 export const CONFIG_DIR = path.join(os.homedir(), '.urur')
 export const CREDENTIALS_PATH = path.join(CONFIG_DIR, 'credentials.json')
 
-// TODO: 本番用の値に置き換える
-export const SUPABASE_URL = 'https://your-project.supabase.co'
-export const SUPABASE_ANON_KEY = 'your-anon-key'
+// tsup の define でビルド時に埋め込まれる
+declare const __SUPABASE_URL__: string
+declare const __SUPABASE_ANON_KEY__: string
+
+export const SUPABASE_URL: string = __SUPABASE_URL__
+export const SUPABASE_ANON_KEY: string = __SUPABASE_ANON_KEY__
