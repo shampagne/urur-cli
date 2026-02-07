@@ -1,0 +1,13 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome-check:
+      glob: "{src,tests}/**/*.ts"
+      run: npx biome check {staged_files}
+    vitest:
+      run: npx vitest run --reporter=dot
+
+pre-push:
+  commands:
+    vitest:
+      run: npx vitest run --reporter=dot

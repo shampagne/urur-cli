@@ -1,0 +1,44 @@
+{
+  "name": "urur",
+  "version": "0.1.0",
+  "description": "CLI for urur.dev - 日本の個人開発サービスディレクトリ",
+  "type": "module",
+  "bin": {
+    "urur": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsup --watch",
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "biome lint src/ tests/",
+    "format": "biome format --write src/ tests/",
+    "check": "biome check src/ tests/",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "lefthook install || true"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.5.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "commander": "^13.1.0",
+    "open": "^10.1.0",
+    "ora": "^8.2.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.0.6",
+    "@types/node": "^22.15.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "lefthook": "^2.1.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
