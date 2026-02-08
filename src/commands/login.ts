@@ -7,6 +7,7 @@ import {
   loadCredentials,
   saveCredentials,
 } from '../lib/auth.js'
+import { WEB_URL } from '../lib/config.js'
 import { createOAuthServer, OAuthServerError } from '../lib/oauthServer.js'
 import { getSupabaseClient } from '../lib/supabase.js'
 
@@ -63,12 +64,15 @@ export async function login(options: LoginOptions): Promise<void> {
     return
   }
 
+  const redirectUri = `http://127.0.0.1:${port}/callback`
+  const consentUrl = `${WEB_URL}/cli/consent?oauth_url=${encodeURIComponent(oauthData.url)}&redirect_uri=${encodeURIComponent(redirectUri)}`
+
   const server = createOAuthServer()
   const spinner = ora('ブラウザで GitHub 認証を待っています...').start()
 
   try {
     const callbackPromise = server.waitForCallback(port, 60000)
-    await open(oauthData.url)
+    await open(consentUrl)
 
     const { code } = await callbackPromise
     spinner.stop()

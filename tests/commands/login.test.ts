@@ -195,6 +195,15 @@ describe('login command', () => {
 
       expect(confirm).not.toHaveBeenCalled()
       expect(open).toHaveBeenCalled()
+      // Should open consent page URL, not direct OAuth URL
+      const openedUrl = vi.mocked(open).mock.calls[0][0] as string
+      expect(openedUrl).toContain('http://localhost:5173/cli/consent')
+      expect(openedUrl).toContain(
+        `oauth_url=${encodeURIComponent('https://supabase.example.com/oauth')}`,
+      )
+      expect(openedUrl).toContain(
+        `redirect_uri=${encodeURIComponent('http://127.0.0.1:8976/callback')}`,
+      )
       expect(saveCredentials).toHaveBeenCalledWith(
         expect.objectContaining({
           access_token: 'new-access',
@@ -298,6 +307,11 @@ describe('login command', () => {
             redirectTo: expect.stringContaining('3000'),
           }),
         }),
+      )
+      // Should include custom port in consent page redirect_uri parameter
+      const openedUrl = vi.mocked(open).mock.calls[0][0] as string
+      expect(openedUrl).toContain(
+        `redirect_uri=${encodeURIComponent('http://127.0.0.1:3000/callback')}`,
       )
     })
   })

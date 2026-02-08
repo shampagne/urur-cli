@@ -37,5 +37,8 @@ export default defineConfig({
     __SUPABASE_ANON_KEY__: JSON.stringify(
       process.env.SUPABASE_ANON_KEY || dotEnv.SUPABASE_ANON_KEY || '',
     ),
+    __WEB_URL__: JSON.stringify(
+      process.env.WEB_URL || dotEnv.WEB_URL || 'https://urur.dev',
+    ),
   },
 })
