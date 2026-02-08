@@ -197,7 +197,7 @@ describe('login command', () => {
       expect(open).toHaveBeenCalled()
       // Should open consent page URL, not direct OAuth URL
       const openedUrl = vi.mocked(open).mock.calls[0][0] as string
-      expect(openedUrl).toContain('http://localhost:5173/cli/consent')
+      expect(openedUrl).toContain('http://127.0.0.1:5173/cli/consent')
       expect(openedUrl).toContain(
         `oauth_url=${encodeURIComponent('https://supabase.example.com/oauth')}`,
       )
