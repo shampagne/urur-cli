@@ -49,6 +49,7 @@ export interface Service {
   url: string
   logo_url: string | null
   status: ServiceStatus
+  source: string
   created_at: string
   updated_at: string
 }
@@ -62,6 +63,7 @@ export interface ServiceInsert {
   url: string
   logo_url?: string | null
   status?: ServiceStatus
+  source?: 'web' | 'cli'
 }
 
 export interface ServiceUpdate {

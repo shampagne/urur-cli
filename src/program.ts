@@ -9,7 +9,7 @@ export function createProgram(): Command {
 
   program
     .name('urur')
-    .description('CLI for urur.dev - 個人開発サービスディレクトリ')
+    .description('CLI for urur.dev - 個人開発プロダクトディレクトリ')
     .version('0.1.0')
 
   program
@@ -39,9 +39,9 @@ export function createProgram(): Command {
 
   program
     .command('submit')
-    .description('サービスを投稿')
-    .option('--name <name>', 'サービス名（必須）')
-    .option('--url <url>', 'サービスURL（必須）')
+    .description('プロダクトを投稿')
+    .option('--name <name>', 'プロダクト名（必須）')
+    .option('--url <url>', 'プロダクトURL（必須）')
     .option('--tagline <text>', 'タグライン（200文字以内）')
     .option('--description <text>', '説明（2000文字以内）')
     .option('--logo-url <url>', 'ロゴURL')

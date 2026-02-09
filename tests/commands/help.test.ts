@@ -21,7 +21,9 @@ function captureHelp(args: string[]): string {
 describe('グローバルヘルプ', () => {
   it('should display CLI description', () => {
     const output = captureHelp(['--help'])
-    expect(output).toContain('CLI for urur.dev - 個人開発サービスディレクトリ')
+    expect(output).toContain(
+      'CLI for urur.dev - 個人開発プロダクトディレクトリ',
+    )
   })
 
   it('should list all 4 commands', () => {
@@ -36,7 +38,7 @@ describe('グローバルヘルプ', () => {
     const output = captureHelp(['--help'])
     expect(output).toContain('GitHub OAuthでログイン')
     expect(output).toContain('ログアウト（認証情報を削除）')
-    expect(output).toContain('サービスを投稿')
+    expect(output).toContain('プロダクトを投稿')
     expect(output).toContain('ログイン中のユーザー情報を表示')
   })
 })

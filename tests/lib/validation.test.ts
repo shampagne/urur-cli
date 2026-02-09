@@ -14,17 +14,17 @@ describe('validateName', () => {
   })
 
   it('should return error for empty string', () => {
-    expect(validateName('')).toBe('サービス名は必須です')
+    expect(validateName('')).toBe('プロダクト名は必須です')
   })
 
   it('should return error for whitespace only', () => {
-    expect(validateName('   ')).toBe('サービス名は必須です')
+    expect(validateName('   ')).toBe('プロダクト名は必須です')
   })
 
   it('should return error for name exceeding 100 characters', () => {
     const longName = 'a'.repeat(101)
     expect(validateName(longName)).toBe(
-      'サービス名は100文字以内で入力してください',
+      'プロダクト名は100文字以内で入力してください',
     )
   })
 
@@ -159,7 +159,7 @@ describe('validateAll', () => {
   it('should return errors for missing required fields', () => {
     const result = validateAll({})
     expect(result.valid).toBe(false)
-    expect(result.errors.name).toBe('サービス名は必須です')
+    expect(result.errors.name).toBe('プロダクト名は必須です')
     expect(result.errors.url).toBe('URLは必須です')
   })
 

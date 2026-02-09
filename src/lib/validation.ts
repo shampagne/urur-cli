@@ -20,8 +20,8 @@ export interface ValidationResult {
 // Error messages in Japanese
 const ERROR_MESSAGES = {
   name: {
-    required: 'サービス名は必須です',
-    maxLength: 'サービス名は100文字以内で入力してください',
+    required: 'プロダクト名は必須です',
+    maxLength: 'プロダクト名は100文字以内で入力してください',
   },
   url: {
     required: 'URLは必須です',
