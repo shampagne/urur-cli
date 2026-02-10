@@ -1,7 +1,23 @@
 {
   "name": "urur",
-  "version": "0.1.0",
-  "description": "CLI for urur.dev - 日本の個人開発サービスディレクトリ",
+  "version": "0.1.1",
+  "description": "CLI for urur.dev - 個人開発プロダクトディレクトリ",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shampagne/urur-cli.git"
+  },
+  "homepage": "https://urur.dev",
+  "bugs": {
+    "url": "https://github.com/shampagne/urur-cli/issues"
+  },
+  "keywords": [
+    "cli",
+    "urur",
+    "product",
+    "indie-dev",
+    "indie-hacker"
+  ],
   "type": "module",
   "bin": {
     "urur": "./dist/index.js"
@@ -19,7 +35,7 @@
     "format": "biome format --write src/ tests/",
     "check": "biome check src/ tests/",
     "typecheck": "tsc --noEmit",
-    "postinstall": "lefthook install || true"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.5.0",
