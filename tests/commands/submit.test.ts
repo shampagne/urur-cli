@@ -322,6 +322,28 @@ describe('submit command', () => {
     })
   })
 
+  describe('--yes flag', () => {
+    it('should skip confirmation prompt when yes is true', async () => {
+      vi.mocked(loadCredentials).mockResolvedValue({
+        access_token: 'token',
+        refresh_token: 'refresh',
+        expires_at: Date.now() / 1000 + 3600,
+      })
+      const mockSupabase = createMockSupabase()
+      vi.mocked(getSupabaseClient).mockReturnValue(mockSupabase)
+      vi.mocked(validateAll).mockReturnValue({ valid: true, errors: {} })
+
+      await submit({
+        name: 'Test App',
+        url: 'https://example.com',
+        yes: true,
+      })
+
+      expect(confirm).not.toHaveBeenCalled()
+      expect(mockSupabase.from).toHaveBeenCalledWith('services')
+    })
+  })
+
   // Task 5.1: 投稿前確認
   describe('confirmation prompt', () => {
     it('should display summary and ask for confirmation', async () => {

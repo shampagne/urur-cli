@@ -94,6 +94,48 @@ describe('login command', () => {
       expect(select).not.toHaveBeenCalled()
     })
 
+    it('should show post-login guide after re-login', async () => {
+      vi.mocked(loadCredentials).mockResolvedValue({
+        access_token: 'existing-token',
+        refresh_token: 'existing-refresh',
+        expires_at: Date.now() / 1000 + 3600,
+      })
+
+      const mockGetUser = vi.fn().mockResolvedValue({
+        data: { user: { user_metadata: { user_name: 'testuser' } } },
+        error: null,
+      })
+      vi.mocked(getSupabaseClient).mockReturnValue({
+        auth: {
+          getUser: mockGetUser,
+          setSession: vi.fn().mockResolvedValue({ error: null }),
+        },
+        // biome-ignore lint/suspicious/noExplicitAny: Supabase mock
+      } as any)
+
+      vi.mocked(confirm).mockResolvedValue(true)
+      vi.mocked(select).mockResolvedValue('github')
+
+      vi.mocked(requestCode).mockResolvedValue({
+        userCode: 'WDJB-MJHT',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 5,
+        deviceCode: 'device-code-123',
+      })
+      vi.mocked(pollForSession).mockResolvedValue({
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+        expiresAt: 1700000000,
+        userName: 'testuser',
+      })
+
+      await login()
+
+      const output = consoleSpy.mock.calls.flat().join('\n')
+      expect(output).toContain('urur submit')
+    })
+
     it('should proceed with login method selection when user confirms re-login', async () => {
       vi.mocked(loadCredentials).mockResolvedValue({
         access_token: 'existing-token',
@@ -194,6 +236,28 @@ describe('login command', () => {
       expect(output).toContain('ghuser')
     })
 
+    it('should show post-login guide after successful GitHub login', async () => {
+      vi.mocked(requestCode).mockResolvedValue({
+        userCode: 'ABCD-EFGH',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 5,
+        deviceCode: 'device-code-123',
+      })
+      vi.mocked(pollForSession).mockResolvedValue({
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
+        expiresAt: 1700000000,
+        userName: 'ghuser',
+      })
+
+      await login()
+
+      const output = consoleSpy.mock.calls.flat().join('\n')
+      expect(output).toContain('urur submit')
+      expect(output).toContain('プロダクトを投稿')
+    })
+
     it('should call pollForSession with correct arguments', async () => {
       vi.mocked(requestCode).mockResolvedValue({
         userCode: 'ABCD-EFGH',
@@ -275,6 +339,24 @@ describe('login command', () => {
 
       const output = consoleSpy.mock.calls.flat().join('\n')
       expect(output).toContain('test@example.com')
+    })
+
+    it('should show post-login guide after successful Email login', async () => {
+      vi.mocked(input)
+        .mockResolvedValueOnce('test@example.com')
+        .mockResolvedValueOnce('123456')
+      vi.mocked(verifyOtp).mockResolvedValue({
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
+        expiresAt: 1700000000,
+        email: 'test@example.com',
+      })
+
+      await login()
+
+      const output = consoleSpy.mock.calls.flat().join('\n')
+      expect(output).toContain('urur submit')
+      expect(output).toContain('プロダクトを投稿')
     })
 
     it('should handle sendOtp error', async () => {

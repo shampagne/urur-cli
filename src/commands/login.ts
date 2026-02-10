@@ -87,6 +87,7 @@ async function loginWithGitHub(): Promise<void> {
       })
 
       console.log(pc.green(`ログイン成功: ${session.userName}`))
+      printPostLoginGuide()
     } catch (err) {
       spinner.fail('認証に失敗しました')
       throw err
@@ -124,6 +125,7 @@ async function loginWithEmail(): Promise<void> {
       })
 
       console.log(pc.green(`ログイン成功: ${session.email}`))
+      printPostLoginGuide()
     }
   } catch (err) {
     console.log(
@@ -174,4 +176,11 @@ async function attemptOtpVerification(email: string): Promise<{
   }
 
   return null
+}
+
+function printPostLoginGuide(): void {
+  console.log()
+  console.log(
+    `次のステップ: ${pc.cyan('urur submit')} でプロダクトを投稿できます`,
+  )
 }

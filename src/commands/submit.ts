@@ -20,6 +20,7 @@ interface SubmitOptions {
   description?: string
   logoUrl?: string
   interactive?: boolean
+  yes?: boolean
 }
 
 function shouldUseInteractive(options: SubmitOptions): boolean {
@@ -140,14 +141,16 @@ export async function submit(options: SubmitOptions): Promise<void> {
   // 4. Summary and confirmation
   displaySummary(formData)
 
-  const confirmed = await confirm({
-    message: '投稿しますか？',
-    default: true,
-  })
+  if (!options.yes) {
+    const confirmed = await confirm({
+      message: '投稿しますか？',
+      default: true,
+    })
 
-  if (!confirmed) {
-    console.log(pc.yellow('投稿をキャンセルしました。'))
-    return
+    if (!confirmed) {
+      console.log(pc.yellow('投稿をキャンセルしました。'))
+      return
+    }
   }
 
   // 5. Submit to Supabase

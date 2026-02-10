@@ -44,6 +44,7 @@ GitHub Device Flow またはメールアドレス（Magic Link）で認証しま
     .option('--description <text>', '説明（2000文字以内）')
     .option('--logo-url <url>', 'ロゴURL')
     .option('-i, --interactive', '対話モードで入力')
+    .option('-y, --yes', '確認をスキップして投稿')
     .addHelpText(
       'after',
       `
