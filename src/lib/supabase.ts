@@ -19,7 +19,6 @@ function createMemoryStorage() {
 export function getSupabaseClient() {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
-      flowType: 'pkce',
       storage: createMemoryStorage(),
       autoRefreshToken: false,
       detectSessionInUrl: false,

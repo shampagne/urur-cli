@@ -36,7 +36,7 @@ describe('グローバルヘルプ', () => {
 
   it('should display Japanese descriptions for each command', () => {
     const output = captureHelp(['--help'])
-    expect(output).toContain('GitHub OAuthでログイン')
+    expect(output).toContain('GitHubまたはメールアドレスでログイン')
     expect(output).toContain('ログアウト（認証情報を削除）')
     expect(output).toContain('プロダクトを投稿')
     expect(output).toContain('ログイン中のユーザー情報を表示')
@@ -44,23 +44,15 @@ describe('グローバルヘルプ', () => {
 })
 
 describe('login --help', () => {
-  it('should display --port option with default 8976', () => {
-    const output = captureHelp(['login', '--help'])
-    expect(output).toContain('--port')
-    expect(output).toContain('8976')
-  })
-
-  it('should display usage examples', () => {
+  it('should display usage example', () => {
     const output = captureHelp(['login', '--help'])
     expect(output).toContain('urur login')
-    expect(output).toContain('urur login --port 3000')
   })
 
-  it('should describe auth flow', () => {
+  it('should describe auth methods', () => {
     const output = captureHelp(['login', '--help'])
-    expect(output).toContain('ブラウザ')
-    expect(output).toContain('GitHub')
-    expect(output).toContain('トークン')
+    expect(output).toContain('GitHub Device Flow')
+    expect(output).toContain('Magic Link')
   })
 })
 

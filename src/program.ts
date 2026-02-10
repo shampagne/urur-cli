@@ -14,16 +14,14 @@ export function createProgram(): Command {
 
   program
     .command('login')
-    .description('GitHub OAuthでログイン')
-    .option('--port <number>', 'コールバック用ポート', '8976')
+    .description('GitHubまたはメールアドレスでログイン')
     .addHelpText(
       'after',
       `
 使用例:
   $ urur login
-  $ urur login --port 3000
 
-ブラウザが開き、GitHubで認証後、トークンがローカルに保存されます。`,
+GitHub Device Flow またはメールアドレス（Magic Link）で認証します。`,
     )
     .action(login)
 

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock dependencies before importing login
 vi.mock('open', () => ({
   default: vi.fn(),
 }))
@@ -16,6 +15,8 @@ vi.mock('ora', () => ({
 
 vi.mock('@inquirer/prompts', () => ({
   confirm: vi.fn(),
+  select: vi.fn(),
+  input: vi.fn(),
 }))
 
 vi.mock('../../src/lib/auth.js', () => ({
@@ -28,19 +29,17 @@ vi.mock('../../src/lib/supabase.js', () => ({
   getSupabaseClient: vi.fn(),
 }))
 
-vi.mock('../../src/lib/oauthServer.js', () => ({
-  createOAuthServer: vi.fn(),
-  OAuthServerError: class OAuthServerError extends Error {
-    type: string
-    constructor(type: string, message: string) {
-      super(message)
-      this.type = type
-      this.name = 'OAuthServerError'
-    }
-  },
+vi.mock('../../src/lib/deviceFlow.js', () => ({
+  requestCode: vi.fn(),
+  pollForSession: vi.fn(),
 }))
 
-import { confirm } from '@inquirer/prompts'
+vi.mock('../../src/lib/magicLink.js', () => ({
+  sendOtp: vi.fn(),
+  verifyOtp: vi.fn(),
+}))
+
+import { confirm, input, select } from '@inquirer/prompts'
 import open from 'open'
 import { login } from '../../src/commands/login.js'
 import {
@@ -48,10 +47,8 @@ import {
   loadCredentials,
   saveCredentials,
 } from '../../src/lib/auth.js'
-import {
-  createOAuthServer,
-  OAuthServerError,
-} from '../../src/lib/oauthServer.js'
+import { pollForSession, requestCode } from '../../src/lib/deviceFlow.js'
+import { sendOtp, verifyOtp } from '../../src/lib/magicLink.js'
 import { getSupabaseClient } from '../../src/lib/supabase.js'
 
 describe('login command', () => {
@@ -59,7 +56,7 @@ describe('login command', () => {
   const originalExitCode = process.exitCode
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     process.exitCode = undefined
   })
@@ -76,7 +73,6 @@ describe('login command', () => {
         expires_at: Date.now() / 1000 + 3600,
       })
 
-      // Mock Supabase getUser to return user info
       const mockGetUser = vi.fn().mockResolvedValue({
         data: { user: { user_metadata: { user_name: 'testuser' } } },
         error: null,
@@ -91,15 +87,14 @@ describe('login command', () => {
 
       vi.mocked(confirm).mockResolvedValue(false)
 
-      await login({ port: '8976' })
+      await login()
 
       expect(loadCredentials).toHaveBeenCalled()
       expect(confirm).toHaveBeenCalled()
-      // User cancelled re-login, should exit without starting OAuth
-      expect(open).not.toHaveBeenCalled()
+      expect(select).not.toHaveBeenCalled()
     })
 
-    it('should proceed with OAuth when user confirms re-login', async () => {
+    it('should proceed with login method selection when user confirms re-login', async () => {
       vi.mocked(loadCredentials).mockResolvedValue({
         access_token: 'existing-token',
         refresh_token: 'existing-refresh',
@@ -110,257 +105,235 @@ describe('login command', () => {
         data: { user: { user_metadata: { user_name: 'testuser' } } },
         error: null,
       })
-      const mockSetSession = vi.fn().mockResolvedValue({ error: null })
-      const mockSignInWithOAuth = vi.fn().mockResolvedValue({
-        data: { url: 'https://supabase.example.com/oauth' },
-        error: null,
-      })
-      const mockExchangeCode = vi.fn().mockResolvedValue({
-        data: {
-          session: {
-            access_token: 'new-access',
-            refresh_token: 'new-refresh',
-            expires_at: Date.now() / 1000 + 3600,
-            user: { user_metadata: { user_name: 'testuser' } },
-          },
-        },
-        error: null,
-      })
-
       vi.mocked(getSupabaseClient).mockReturnValue({
         auth: {
           getUser: mockGetUser,
-          setSession: mockSetSession,
-          signInWithOAuth: mockSignInWithOAuth,
-          exchangeCodeForSession: mockExchangeCode,
+          setSession: vi.fn().mockResolvedValue({ error: null }),
         },
         // biome-ignore lint/suspicious/noExplicitAny: Supabase mock
       } as any)
 
       vi.mocked(confirm).mockResolvedValue(true)
+      vi.mocked(select).mockResolvedValue('github')
 
-      const mockWaitForCallback = vi
-        .fn()
-        .mockResolvedValue({ code: 'auth-code' })
-      const mockClose = vi.fn()
-      vi.mocked(createOAuthServer).mockReturnValue({
-        waitForCallback: mockWaitForCallback,
-        close: mockClose,
+      const session = {
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+        expiresAt: 1700000000,
+        userName: 'testuser',
+      }
+      vi.mocked(requestCode).mockResolvedValue({
+        userCode: 'WDJB-MJHT',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 5,
+        deviceCode: 'device-code-123',
       })
+      vi.mocked(pollForSession).mockResolvedValue(session)
 
-      await login({ port: '8976' })
+      await login()
 
       expect(clearCredentials).toHaveBeenCalled()
-      expect(open).toHaveBeenCalled()
+      expect(select).toHaveBeenCalled()
       expect(saveCredentials).toHaveBeenCalled()
-    })
-
-    it('should start OAuth flow when no existing credentials', async () => {
-      vi.mocked(loadCredentials).mockResolvedValue(null)
-
-      const mockSignInWithOAuth = vi.fn().mockResolvedValue({
-        data: { url: 'https://supabase.example.com/oauth' },
-        error: null,
-      })
-      const mockExchangeCode = vi.fn().mockResolvedValue({
-        data: {
-          session: {
-            access_token: 'new-access',
-            refresh_token: 'new-refresh',
-            expires_at: Date.now() / 1000 + 3600,
-            user: { user_metadata: { user_name: 'newuser' } },
-          },
-        },
-        error: null,
-      })
-
-      vi.mocked(getSupabaseClient).mockReturnValue({
-        auth: {
-          signInWithOAuth: mockSignInWithOAuth,
-          exchangeCodeForSession: mockExchangeCode,
-        },
-        // biome-ignore lint/suspicious/noExplicitAny: Supabase mock
-      } as any)
-
-      const mockWaitForCallback = vi
-        .fn()
-        .mockResolvedValue({ code: 'auth-code' })
-      const mockClose = vi.fn()
-      vi.mocked(createOAuthServer).mockReturnValue({
-        waitForCallback: mockWaitForCallback,
-        close: mockClose,
-      })
-
-      await login({ port: '8976' })
-
-      expect(confirm).not.toHaveBeenCalled()
-      expect(open).toHaveBeenCalled()
-      // Should open consent page URL, not direct OAuth URL
-      const openedUrl = vi.mocked(open).mock.calls[0][0] as string
-      expect(openedUrl).toContain('http://127.0.0.1:5173/cli/consent')
-      expect(openedUrl).toContain(
-        `oauth_url=${encodeURIComponent('https://supabase.example.com/oauth')}`,
-      )
-      expect(openedUrl).toContain(
-        `redirect_uri=${encodeURIComponent('http://127.0.0.1:8976/callback')}`,
-      )
-      expect(saveCredentials).toHaveBeenCalledWith(
-        expect.objectContaining({
-          access_token: 'new-access',
-          refresh_token: 'new-refresh',
-        }),
-      )
     })
   })
 
-  describe('OAuth flow', () => {
-    it('should save credentials and show username on success', async () => {
+  describe('GitHub Device Flow', () => {
+    beforeEach(() => {
       vi.mocked(loadCredentials).mockResolvedValue(null)
+      vi.mocked(select).mockResolvedValue('github')
+    })
 
-      const mockSignInWithOAuth = vi.fn().mockResolvedValue({
-        data: { url: 'https://supabase.example.com/oauth' },
-        error: null,
+    it('should display user code and open browser', async () => {
+      vi.mocked(requestCode).mockResolvedValue({
+        userCode: 'WDJB-MJHT',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 5,
+        deviceCode: 'device-code-123',
       })
-      const expiresAt = Math.floor(Date.now() / 1000) + 3600
-      const mockExchangeCode = vi.fn().mockResolvedValue({
-        data: {
-          session: {
-            access_token: 'access-123',
-            refresh_token: 'refresh-456',
-            expires_at: expiresAt,
-            user: { user_metadata: { user_name: 'ghuser' } },
-          },
-        },
-        error: null,
-      })
-
-      vi.mocked(getSupabaseClient).mockReturnValue({
-        auth: {
-          signInWithOAuth: mockSignInWithOAuth,
-          exchangeCodeForSession: mockExchangeCode,
-        },
-        // biome-ignore lint/suspicious/noExplicitAny: Supabase mock
-      } as any)
-
-      const mockWaitForCallback = vi
-        .fn()
-        .mockResolvedValue({ code: 'code-xyz' })
-      const mockClose = vi.fn()
-      vi.mocked(createOAuthServer).mockReturnValue({
-        waitForCallback: mockWaitForCallback,
-        close: mockClose,
+      vi.mocked(pollForSession).mockResolvedValue({
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
+        expiresAt: 1700000000,
+        userName: 'ghuser',
       })
 
-      await login({ port: '8976' })
+      await login()
+
+      const output = consoleSpy.mock.calls.flat().join('\n')
+      expect(output).toContain('WDJB-MJHT')
+      expect(open).toHaveBeenCalledWith('https://github.com/login/device')
+    })
+
+    it('should save credentials and show username on success', async () => {
+      vi.mocked(requestCode).mockResolvedValue({
+        userCode: 'ABCD-EFGH',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 5,
+        deviceCode: 'device-code-123',
+      })
+      vi.mocked(pollForSession).mockResolvedValue({
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
+        expiresAt: 1700000000,
+        userName: 'ghuser',
+      })
+
+      await login()
 
       expect(saveCredentials).toHaveBeenCalledWith({
         access_token: 'access-123',
         refresh_token: 'refresh-456',
-        expires_at: expiresAt,
+        expires_at: 1700000000,
       })
 
-      // Should display username
       const output = consoleSpy.mock.calls.flat().join('\n')
       expect(output).toContain('ghuser')
     })
 
-    it('should use custom port when specified', async () => {
-      vi.mocked(loadCredentials).mockResolvedValue(null)
-
-      const mockSignInWithOAuth = vi.fn().mockResolvedValue({
-        data: { url: 'https://supabase.example.com/oauth' },
-        error: null,
+    it('should call pollForSession with correct arguments', async () => {
+      vi.mocked(requestCode).mockResolvedValue({
+        userCode: 'ABCD-EFGH',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 5,
+        deviceCode: 'device-code-123',
       })
-      const mockExchangeCode = vi.fn().mockResolvedValue({
-        data: {
-          session: {
-            access_token: 'a',
-            refresh_token: 'r',
-            expires_at: 9999999999,
-            user: { user_metadata: { user_name: 'user' } },
-          },
-        },
-        error: null,
+      vi.mocked(pollForSession).mockResolvedValue({
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
+        expiresAt: 1700000000,
+        userName: 'ghuser',
       })
 
-      vi.mocked(getSupabaseClient).mockReturnValue({
-        auth: {
-          signInWithOAuth: mockSignInWithOAuth,
-          exchangeCodeForSession: mockExchangeCode,
-        },
-        // biome-ignore lint/suspicious/noExplicitAny: Supabase mock
-      } as any)
+      await login()
 
-      const mockWaitForCallback = vi.fn().mockResolvedValue({ code: 'c' })
-      const mockClose = vi.fn()
-      vi.mocked(createOAuthServer).mockReturnValue({
-        waitForCallback: mockWaitForCallback,
-        close: mockClose,
-      })
+      expect(pollForSession).toHaveBeenCalledWith('device-code-123', 5, 900)
+    })
 
-      await login({ port: '3000' })
-
-      expect(mockWaitForCallback).toHaveBeenCalledWith(3000, expect.any(Number))
-      expect(mockSignInWithOAuth).toHaveBeenCalledWith(
-        expect.objectContaining({
-          options: expect.objectContaining({
-            redirectTo: expect.stringContaining('3000'),
-          }),
-        }),
+    it('should handle requestCode error', async () => {
+      vi.mocked(requestCode).mockRejectedValue(
+        new Error('Edge Function エラー: 500'),
       )
-      // Should include custom port in consent page redirect_uri parameter
-      const openedUrl = vi.mocked(open).mock.calls[0][0] as string
-      expect(openedUrl).toContain(
-        `redirect_uri=${encodeURIComponent('http://127.0.0.1:3000/callback')}`,
+
+      await login()
+
+      expect(process.exitCode).toBe(1)
+      const output = consoleSpy.mock.calls.flat().join('\n')
+      expect(output).toContain('Edge Function エラー: 500')
+    })
+
+    it('should handle pollForSession error', async () => {
+      vi.mocked(requestCode).mockResolvedValue({
+        userCode: 'ABCD-EFGH',
+        verificationUri: 'https://github.com/login/device',
+        expiresIn: 900,
+        interval: 5,
+        deviceCode: 'device-code-123',
+      })
+      vi.mocked(pollForSession).mockRejectedValue(
+        new Error(
+          '認証がタイムアウトしました。再度 urur login を実行してください。',
+        ),
       )
+
+      await login()
+
+      expect(process.exitCode).toBe(1)
     })
   })
 
-  describe('error handling', () => {
-    it('should handle OAuth server error (PORT_IN_USE)', async () => {
+  describe('Magic Link Flow', () => {
+    beforeEach(() => {
       vi.mocked(loadCredentials).mockResolvedValue(null)
-
-      vi.mocked(getSupabaseClient).mockReturnValue({
-        auth: {
-          signInWithOAuth: vi.fn().mockResolvedValue({
-            data: { url: 'https://example.com/oauth' },
-            error: null,
-          }),
-        },
-        // biome-ignore lint/suspicious/noExplicitAny: Supabase mock
-      } as any)
-
-      const mockWaitForCallback = vi
-        .fn()
-        .mockRejectedValue(
-          new OAuthServerError('PORT_IN_USE', 'ポート 8976 は既に使用中です。'),
-        )
-      vi.mocked(createOAuthServer).mockReturnValue({
-        waitForCallback: mockWaitForCallback,
-        close: vi.fn(),
-      })
-
-      await login({ port: '8976' })
-
-      expect(process.exitCode).toBe(1)
+      vi.mocked(select).mockResolvedValue('email')
     })
 
-    it('should handle OAuth signIn error', async () => {
-      vi.mocked(loadCredentials).mockResolvedValue(null)
+    it('should send OTP and verify successfully', async () => {
+      vi.mocked(input)
+        .mockResolvedValueOnce('test@example.com')
+        .mockResolvedValueOnce('123456')
+      vi.mocked(verifyOtp).mockResolvedValue({
+        accessToken: 'access-123',
+        refreshToken: 'refresh-456',
+        expiresAt: 1700000000,
+        email: 'test@example.com',
+      })
 
-      vi.mocked(getSupabaseClient).mockReturnValue({
-        auth: {
-          signInWithOAuth: vi.fn().mockResolvedValue({
-            data: { url: null },
-            error: { message: 'OAuth error' },
-          }),
-        },
-        // biome-ignore lint/suspicious/noExplicitAny: Supabase mock
-      } as any)
+      await login()
 
-      await login({ port: '8976' })
+      expect(sendOtp).toHaveBeenCalledWith('test@example.com')
+      expect(verifyOtp).toHaveBeenCalledWith('test@example.com', '123456')
+      expect(saveCredentials).toHaveBeenCalledWith({
+        access_token: 'access-123',
+        refresh_token: 'refresh-456',
+        expires_at: 1700000000,
+      })
+
+      const output = consoleSpy.mock.calls.flat().join('\n')
+      expect(output).toContain('test@example.com')
+    })
+
+    it('should handle sendOtp error', async () => {
+      vi.mocked(input).mockResolvedValueOnce('test@example.com')
+      vi.mocked(sendOtp).mockRejectedValue(new Error('Rate limit exceeded'))
+
+      await login()
 
       expect(process.exitCode).toBe(1)
+      const output = consoleSpy.mock.calls.flat().join('\n')
+      expect(output).toContain('Rate limit exceeded')
+    })
+
+    it('should retry OTP verification up to 3 times then offer resend', async () => {
+      vi.mocked(input)
+        .mockResolvedValueOnce('test@example.com') // email
+        .mockResolvedValueOnce('wrong1') // OTP attempt 1
+        .mockResolvedValueOnce('wrong2') // OTP attempt 2
+        .mockResolvedValueOnce('wrong3') // OTP attempt 3
+        .mockResolvedValueOnce('correct') // OTP after resend
+
+      vi.mocked(verifyOtp)
+        .mockRejectedValueOnce(new Error('Invalid token'))
+        .mockRejectedValueOnce(new Error('Invalid token'))
+        .mockRejectedValueOnce(new Error('Invalid token'))
+        .mockResolvedValueOnce({
+          accessToken: 'access-123',
+          refreshToken: 'refresh-456',
+          expiresAt: 1700000000,
+          email: 'test@example.com',
+        })
+
+      vi.mocked(confirm).mockResolvedValue(true) // Yes, resend
+
+      await login()
+
+      expect(sendOtp).toHaveBeenCalledTimes(2) // initial + resend
+      expect(verifyOtp).toHaveBeenCalledTimes(4) // 3 failed + 1 success
+      expect(saveCredentials).toHaveBeenCalled()
+    })
+
+    it('should exit when user declines resend after 3 failures', async () => {
+      vi.mocked(input)
+        .mockResolvedValueOnce('test@example.com')
+        .mockResolvedValueOnce('wrong1')
+        .mockResolvedValueOnce('wrong2')
+        .mockResolvedValueOnce('wrong3')
+
+      vi.mocked(verifyOtp)
+        .mockRejectedValueOnce(new Error('Invalid token'))
+        .mockRejectedValueOnce(new Error('Invalid token'))
+        .mockRejectedValueOnce(new Error('Invalid token'))
+
+      vi.mocked(confirm).mockResolvedValue(false) // No, don't resend
+
+      await login()
+
+      expect(sendOtp).toHaveBeenCalledTimes(1)
+      expect(saveCredentials).not.toHaveBeenCalled()
     })
   })
 })

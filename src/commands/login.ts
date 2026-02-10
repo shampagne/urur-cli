@@ -1,4 +1,4 @@
-import { confirm } from '@inquirer/prompts'
+import { confirm, input, select } from '@inquirer/prompts'
 import open from 'open'
 import ora from 'ora'
 import pc from 'picocolors'
@@ -7,22 +7,18 @@ import {
   loadCredentials,
   saveCredentials,
 } from '../lib/auth.js'
-import { WEB_URL } from '../lib/config.js'
-import { createOAuthServer, OAuthServerError } from '../lib/oauthServer.js'
+import { pollForSession, requestCode } from '../lib/deviceFlow.js'
+import { sendOtp, verifyOtp } from '../lib/magicLink.js'
 import { getSupabaseClient } from '../lib/supabase.js'
 
-interface LoginOptions {
-  port: string
-}
+const MAX_OTP_ATTEMPTS = 3
 
-export async function login(options: LoginOptions): Promise<void> {
-  const port = Number.parseInt(options.port, 10)
+export async function login(): Promise<void> {
   const supabase = getSupabaseClient()
 
   // Check existing credentials
   const existing = await loadCredentials()
   if (existing) {
-    // Try to get user info from existing session
     await supabase.auth.setSession({
       access_token: existing.access_token,
       refresh_token: existing.refresh_token,
@@ -44,79 +40,138 @@ export async function login(options: LoginOptions): Promise<void> {
     await clearCredentials()
   }
 
-  // Start OAuth flow
-  const { data: oauthData, error: oauthError } =
-    await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: `http://127.0.0.1:${port}/callback`,
-        skipBrowserRedirect: true,
+  // Select login method
+  const method = await select({
+    message: 'ログイン方法を選択してください',
+    choices: [
+      { name: 'GitHub', value: 'github' },
+      { name: 'メールアドレス', value: 'email' },
+    ],
+  })
+
+  if (method === 'github') {
+    await loginWithGitHub()
+  } else {
+    await loginWithEmail()
+  }
+}
+
+async function loginWithGitHub(): Promise<void> {
+  try {
+    const deviceCode = await requestCode()
+
+    console.log()
+    console.log(pc.bold(`認証コード: ${pc.cyan(deviceCode.userCode)}`))
+    console.log(
+      `以下の URL でコードを入力してください: ${deviceCode.verificationUri}`,
+    )
+    console.log()
+
+    await open(deviceCode.verificationUri)
+
+    const spinner = ora('GitHub で認証を待っています...').start()
+
+    try {
+      const session = await pollForSession(
+        deviceCode.deviceCode,
+        deviceCode.interval,
+        deviceCode.expiresIn,
+      )
+
+      spinner.succeed('認証完了')
+
+      await saveCredentials({
+        access_token: session.accessToken,
+        refresh_token: session.refreshToken,
+        expires_at: session.expiresAt,
+      })
+
+      console.log(pc.green(`ログイン成功: ${session.userName}`))
+    } catch (err) {
+      spinner.fail('認証に失敗しました')
+      throw err
+    }
+  } catch (err) {
+    console.log(
+      pc.red(`エラー: ${err instanceof Error ? err.message : String(err)}`),
+    )
+    process.exitCode = 1
+  }
+}
+
+async function loginWithEmail(): Promise<void> {
+  try {
+    const email = await input({
+      message: 'メールアドレスを入力してください',
+      validate: (value) => {
+        if (!value.includes('@')) {
+          return '有効なメールアドレスを入力してください'
+        }
+        return true
       },
     })
 
-  if (oauthError || !oauthData.url) {
+    await sendOtp(email)
+    console.log(pc.green(`${email} に認証コードを送信しました`))
+
+    const session = await attemptOtpVerification(email)
+
+    if (session) {
+      await saveCredentials({
+        access_token: session.accessToken,
+        refresh_token: session.refreshToken,
+        expires_at: session.expiresAt,
+      })
+
+      console.log(pc.green(`ログイン成功: ${session.email}`))
+    }
+  } catch (err) {
     console.log(
-      pc.red(
-        `OAuth エラー: ${oauthError?.message ?? 'URLが取得できませんでした'}`,
-      ),
+      pc.red(`エラー: ${err instanceof Error ? err.message : String(err)}`),
     )
     process.exitCode = 1
-    return
   }
+}
 
-  const redirectUri = `http://127.0.0.1:${port}/callback`
-  const consentUrl = `${WEB_URL}/cli/consent?oauth_url=${encodeURIComponent(oauthData.url)}&redirect_uri=${encodeURIComponent(redirectUri)}`
-
-  const server = createOAuthServer()
-  const spinner = ora('ブラウザで GitHub 認証を待っています...').start()
-
-  try {
-    const callbackPromise = server.waitForCallback(port, 60000)
-    await open(consentUrl)
-
-    const { code } = await callbackPromise
-    spinner.stop()
-
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.exchangeCodeForSession(code)
-
-    if (sessionError || !sessionData.session) {
-      console.log(
-        pc.red(
-          `セッション取得エラー: ${sessionError?.message ?? 'セッションが取得できませんでした'}`,
-        ),
-      )
-      process.exitCode = 1
-      return
-    }
-
-    const { session } = sessionData
-    await saveCredentials({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_at: session.expires_at ?? 0,
+async function attemptOtpVerification(email: string): Promise<{
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+  email: string
+} | null> {
+  for (let attempt = 0; attempt < MAX_OTP_ATTEMPTS; attempt++) {
+    const token = await input({
+      message: '認証コードを入力してください',
     })
 
-    const username = session.user?.user_metadata?.user_name ?? '不明'
-    console.log(pc.green(`ログイン成功: ${username}`))
-  } catch (err) {
-    spinner.stop()
-    server.close()
-
-    if (err instanceof OAuthServerError) {
-      console.log(pc.red(err.message))
-      if (err.type === 'PORT_IN_USE') {
+    try {
+      return await verifyOtp(email, token)
+    } catch {
+      const remaining = MAX_OTP_ATTEMPTS - attempt - 1
+      if (remaining > 0) {
         console.log(
-          pc.yellow('--port オプションで別のポートを指定してください。'),
+          pc.yellow(`認証コードが無効です。残り ${remaining} 回試行できます。`),
         )
       }
-    } else {
-      console.log(
-        pc.red(
-          `予期しないエラー: ${err instanceof Error ? err.message : String(err)}`,
-        ),
-      )
     }
-    process.exitCode = 1
   }
+
+  // All attempts failed, offer resend
+  const shouldResend = await confirm({
+    message: '認証コードを再送信しますか？',
+    default: true,
+  })
+
+  if (shouldResend) {
+    await sendOtp(email)
+    console.log(pc.green(`${email} に認証コードを再送信しました`))
+
+    const token = await input({
+      message: '認証コードを入力してください',
+    })
+
+    return await verifyOtp(email, token)
+  }
+
+  return null
 }
